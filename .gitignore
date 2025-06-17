@@ -1,0 +1,21 @@
+# MacOS
+.DS_Store
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Python
+__pycache__/
+.venv/
+
+# Project
+
+data/
+src/*
+!src/basic.py
+!src/example.py
+
+# Zip
+*.zip
