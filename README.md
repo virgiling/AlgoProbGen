@@ -14,7 +14,7 @@ uv sync
 
 # 出题
 
-在 `src` 文件夹中手动创建文件
+在 `src` 文件夹中手动创建文件，或使用 `make init` 来初始化一个文件
 
 可以参考 `src/example.py` 查看使用方法
 
@@ -24,7 +24,11 @@ uv sync
 
 ## 题解
 
-在 `Solution` 的子类中实现方法 `solve`
+在 `Solution` 的子类中实现方法 `solve` 与读取数据的函数 `read_input`，其中：
+
+1. `read_input` 用于读取数据到 `self.input_data` 列表中，列表的每一项都是一份完整的数据，用于后续求解
+
+2. `solve` 会求解 `self.input_data` 中所有的数据，将答案合并为一个符合输出格式的字符串并返回
 
 > [!NOTE]
 > 你可以添加任意的辅助函数（注意需要将其写为私有函数的形式）

@@ -1,0 +1,50 @@
+#!/bin/bash
+
+filename=src/$(date +%y_%m_%d).py
+
+if [ -f $filename ]; then
+    echo "File $filename already exists"
+    exit 1
+fi
+
+cat >$filename <<'EOF'
+import os
+import tempfile
+from basic import Generator, Solution
+import unittest
+import cyaron
+import argparse
+
+
+class SingleInputCase(Solution):
+    def __init__(self):
+        super().__init__("SingleInputCase")
+
+    def read_input(self, input: str):
+        pass
+
+    def solve(self) -> str:
+        pass
+
+
+class SampleTest(unittest.TestCase):
+    def test(self):
+        pass
+
+
+class ProblemGenerator(Generator):
+    def generate_data(self, solution: Solution):
+        pass
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--test", action="store_true")
+    parser.add_argument("--generate", action="store_true")
+    args = parser.parse_args()
+
+    if args.test:
+        unittest.main()
+    elif args.generate:
+        pass
+EOF

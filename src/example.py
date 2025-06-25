@@ -1,9 +1,15 @@
 import os
+import tempfile
 from basic import Generator, Solution
 import unittest
 import cyaron
+import argparse
 
-class ProblemA(Solution):
+
+# 单组输入例子
+
+
+class SingleInputCase(Solution):
     """
     # 题目描述
 
@@ -51,16 +57,25 @@ class ProblemA(Solution):
             14: "E",
             15: "F",
         }
-        super().__init__("ProblemA")
-    
-    def solve(self, input: str) -> str:
-        base, n, target_base =input.split("\n")
-        return self._to_base_n(self._to_base_10(n, int(base)), int(target_base))
+        super().__init__("SingleInputCase")
+
+    def read_input(self, input: str):
+        self.input_data.append(input)
+        return self
+
+    def solve(self) -> str:
+        self.ans = ""
+        for line in self.input_data:
+            base, n, target_base = line.split("\n")
+            self.ans += self._to_base_n(
+                self._to_base_10(n, int(base)), int(target_base)
+            )
+        return self.ans
 
     def _to_base_10(self, n: str, base: int) -> int:
         num = 0
         for c in n:
-            tmp = ord(c) - ord('0') if c.isdigit() else ord(c) - ord('A') + 10
+            tmp = ord(c) - ord("0") if c.isdigit() else ord(c) - ord("A") + 10
             num = num * base + int(tmp)
         return num
 
@@ -71,7 +86,11 @@ class ProblemA(Solution):
             n = n // base
         return num
 
-class ProblemB(Solution):
+
+# 多组输入例子
+
+
+class MultipleInputCase(Solution):
     """
     # 题目描述
 
@@ -79,42 +98,65 @@ class ProblemB(Solution):
 
     # 输入格式
 
-    共一行，一个不超过 128 位的正整数。
+    有多组输入，每组输入一行，是一个不超过 128 位的正整数。
 
     # 输出格式
 
-    共一行，一个二进制数，表示转换之后的二进制数。
+    对于每组输入，输出一行，一个二进制数，表示转换之后的二进制数。
 
     # 输入样例
-    
+
     ```txt
     985
+    1234567890123456789012345678901234567890
+    1000
     ```
 
     # 输出样例
 
     ```txt
     1111011001
+    1110100000110010010010000001110101110000001101101111110011101110001010110010111100010111111001011011001110001111110000101011010010
+    1111101000
     ```
     """
-    def __init__(self):
-        super().__init__("ProblemB")
 
-    def solve(self, input: str) -> str:
-        return bin(int(input))[2:]
+    def __init__(self):
+        super().__init__("MultipleInputCase")
+
+    def read_input(self, input: str):
+        with open(input, "r") as f:
+            file_content = f.readlines()
+            for line in file_content:
+                self.input_data.append(line.strip())
+        return self
+
+    def solve(self) -> str:
+        self.ans = ""
+        for line in self.input_data:
+            self.ans += bin(int(line))[2:] + "\n"
+        return self.ans
 
 
 class SampleTest(unittest.TestCase):
-    def test_ProblemA(self):
-        self.assertEqual(ProblemA().solve("16\nFF\n2"), "11111111")
+    def test_SingleInputCase(self):
+        prob = SingleInputCase().read_input("16\nFF\n2")
+        self.assertEqual(prob.solve(), "11111111")
 
-    def test_ProblemB(self):
-        self.assertEqual(ProblemB().solve("985"), "1111011001")
+    def test_MultipleInputCase(self):
+        fd, filename = tempfile.mkstemp()
+        os.write(fd, b"985\n1234567890123456789012345678901234567890\n1000")
+        os.close(fd)
+        prob = MultipleInputCase().read_input(filename)
+        self.assertEqual(
+            prob.solve(),
+            "1111011001\n1110100000110010010010000001110101110000001101101111110011101110001010110010111100010111111001011011001110001111110000101011010010\n1111101000\n",
+        )
 
 
 class ProblemGenerator(Generator):
     def generate_data(self, solution: Solution):
-        if isinstance(solution, ProblemA):
+        if isinstance(solution, SingleInputCase):
             os.makedirs(f"data/{solution.name}/data", exist_ok=True)
             for i in range(1, 6):
                 path = f"data/{solution.name}/data/{i}.in"
@@ -130,7 +172,7 @@ class ProblemGenerator(Generator):
                 with open(path.replace(".in", ".out"), "w") as f:
                     f.write(solution.solve(f"{base}\n{num_str}\n{new_base}"))
 
-        elif isinstance(solution, ProblemB):
+        elif isinstance(solution, MultipleInputCase):
             os.makedirs(f"data/{solution.name}/data", exist_ok=True)
             for i in range(1, 6):
                 path = f"data/{solution.name}/data/{i}.in"
@@ -144,16 +186,21 @@ class ProblemGenerator(Generator):
 
 
 if __name__ == "__main__":
-    gen = ProblemGenerator()
-    
-    problem_class_name = [
-        "ProblemA",
-        "ProblemB",
-    ]
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--test", action="store_true")
+    parser.add_argument("--generate", action="store_true")
+    args = parser.parse_args()
 
-    for problem in problem_class_name:
-        solution = globals()[problem]()
-        os.makedirs(f"data/{solution.name}", exist_ok=True)
-        gen.problem_description(f"data/{solution.name}/description.md", solution)
-        gen.generate_data(solution)
-
+    if args.test:
+        unittest.main()
+    elif args.generate:
+        gen = ProblemGenerator()
+        problem_class_name = [
+            "SingleInputCase",
+            "MultipleInputCase",
+        ]
+        for problem in problem_class_name:
+            solution = globals()[problem]()
+            os.makedirs(f"data/{solution.name}", exist_ok=True)
+            gen.problem_description(f"data/{solution.name}/description.md", solution)
+            gen.generate_data(solution)

@@ -19,3 +19,7 @@ src/*
 
 # Zip
 *.zip
+
+# MacOS
+.DS_Store
+__MACOSX/
