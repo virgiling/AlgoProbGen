@@ -9,13 +9,15 @@ Desktop.ini
 # Python
 __pycache__/
 .venv/
+.env
+.env.local
 
 # Project
 
 data/
-src/*
-!src/basic.py
-!src/example.py
+__pycache__
+*.egg-info/
+output/
 
 # Zip
 *.zip
