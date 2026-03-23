@@ -1,0 +1,2 @@
+"""AlgorithmGenerate application package."""
+

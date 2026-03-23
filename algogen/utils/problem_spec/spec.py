@@ -15,6 +15,52 @@ _NON_STATEMENT_HEADING_PATTERN = re.compile(
     flags=re.MULTILINE,
 )
 
+SAMPLER_TEMPLATE = """
+import cyaron
+
+
+def main() -> None:
+    # Replace this example with logic that matches your own schema.
+    n = cyaron.randint(1, 5)
+    arr = [cyaron.randint(0, 100) for _ in range(n)]
+
+    # Print exactly one valid input case.
+    print(n)
+    print(" ".join(map(str, arr)))
+
+
+if __name__ == "__main__":
+    main()
+""".strip()
+
+
+SAMPLER_PROMPT = """
+Generate a Python sampler script using `cyaron`.
+
+Input schema:
+{input_schema}
+
+Output schema (for understanding only, do NOT print output):
+{output_schema}
+
+Constraints:
+{constraints}
+
+Sampler template (adapt this structure):
+```python
+{sampler_template}
+```
+
+Previous sampler crash reason (optional):
+{crashed_reason}
+
+Hard requirements:
+1. Return only executable Python code (no Markdown, no explanation).
+2. Print exactly one valid test case to stdout.
+3. Do not print expected outputs/answers.
+4. Follow input schema and constraints strictly.
+""".strip()
+
 
 @dataclass(slots=True)
 class ParsedProblemMarkdown:
@@ -22,6 +68,7 @@ class ParsedProblemMarkdown:
     input_format: str
     output_format: str
     samples: list[tuple[str, str]]
+    hints: str
 
 
 class SampleIO(BaseModel):
@@ -44,10 +91,7 @@ class ProblemSpec(BaseModel):
         default_factory=list,
         description="样例输入输出",
     )
-    generator_hints: list[str] = Field(
-        default_factory=list,
-        description="给数据生成器的提示",
-    )
+    hints: str = Field(description="题目描述的提示")
 
     def to_problem_markdown(self) -> str:
         statement_md = normalize_statement_markdown(self.rewritten_statement_md)
@@ -81,6 +125,15 @@ class ProblemSpec(BaseModel):
                     "```txt",
                     first.output.strip(),
                     "```",
+                    "",
+                ]
+            )
+        if self.hints:
+            lines.extend(
+                [
+                    "# 提示",
+                    "",
+                    self.hints.strip(),
                     "",
                 ]
             )
@@ -126,7 +179,7 @@ def parse_problem_markdown(markdown_text: str) -> ParsedProblemMarkdown:
     statement = sections.get("题目描述", "").strip()
     input_format = sections.get("输入格式", "").strip()
     output_format = sections.get("输出格式", "").strip()
-
+    hints = sections.get("提示", "").strip()
     input_sample = extract_code_block(sections.get("输入样例", "").strip())
     output_sample = extract_code_block(sections.get("输出样例", "").strip())
     samples: list[tuple[str, str]] = []
@@ -138,6 +191,7 @@ def parse_problem_markdown(markdown_text: str) -> ParsedProblemMarkdown:
         input_format=input_format,
         output_format=output_format,
         samples=samples,
+        hints=hints,
     )
 
 

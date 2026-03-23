@@ -35,6 +35,7 @@ class AppConfig:
     output_dir: Path
     bench_number: int
     threads: int
+    cegis_max_group_rounds: int
     language: str | None
     env_file: Path
 
@@ -72,6 +73,11 @@ class AppConfig:
             output_dir=Path(merged_env.get("OUTPUT_DIR", "./output")),
             bench_number=_read_positive_int(merged_env, "BENCH_NUMBER", default=5),
             threads=_read_positive_int(merged_env, "THREADS", default=1),
+            cegis_max_group_rounds=_read_positive_int(
+                merged_env,
+                "CEGIS_MAX_GROUP_ROUNDS",
+                default=50,
+            ),
             language=_read_optional_language(merged_env, "LANGUAGE"),
             env_file=env_file,
         )

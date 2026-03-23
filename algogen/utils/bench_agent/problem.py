@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor
 import logging
 from pathlib import Path
 import os
+from queue import Empty, Queue
 import shutil
 import subprocess
-from typing import Any, Callable
+from threading import Lock
 import zipfile
 
 from .solution import Solution
@@ -24,12 +25,10 @@ class Problem:
         solver: Path = Path("./template/"),
         language: str | None = None,
         output_path: Path = Path("./output/"),
-        retry_times: int = 1,
     ):
         self.name = name
         self.bench_number = bench_number
-        self.threads = threads
-        self.pool: ThreadPoolExecutor | None = None
+        self.threads = max(1, min(threads, os.cpu_count() or 1))
         self.sampler = Path(sampler) if sampler is not None else None
         self.problem_description = ""
         self.output_path = output_path.joinpath(name)
@@ -37,13 +36,13 @@ class Problem:
         self.solver_path, self.language = self._resolve_solver_and_language(
             solver, language
         )
-        self.retry_times = max(0, retry_times)
         self.solver = Solution(name)
         self.output_path.mkdir(parents=True, exist_ok=True)
+        self._tmp_case_seq = 0
+        self.crashed_reasons: list[str] = []
 
-        if threads > 1:
-            workers = min(threads, os.cpu_count() or threads)
-            self.pool = ThreadPoolExecutor(max_workers=workers)
+        self._accept_lock = Lock()
+        self.problem_pool: Queue[Path | None] = Queue(maxsize=self.bench_number * 2)
 
     def set_sampler(self, sampler: str | Path | None):
         self.sampler = Path(sampler) if sampler is not None else None
@@ -96,136 +95,132 @@ class Problem:
             )
         if process.returncode != 0:
             raise RuntimeError(
-                f"Sampler failed: {self.sampler}\n"
-                f"stderr:\n{process.stderr}"
+                f"Sampler failed: {self.sampler}\nstderr:\n{process.stderr}"
             )
         if output_file.stat().st_size == 0:
             raise RuntimeError(f"Sampler generated empty input file: {output_file}")
 
-    def _generate_case(self, index: int) -> tuple[Path, Path]:
-        input_file = self.output_path.joinpath(f"{index}.in")
-        output_file = self.output_path.joinpath(f"{index}.out")
-        last_error: Exception | None = None
-        for attempt in range(1, self.retry_times + 2):
+    def generate_case_group(
+        self,
+        group_size: int = 5,
+    ) -> tuple[list[Path], list[str]]:
+        if group_size <= 0:
+            return [], []
+
+        input_file_list = [
+            self._next_temp_input_path(case_index)
+            for case_index in range(1, group_size + 1)
+        ]
+        generation_failures: list[str] = []
+        queued_cases = 0
+
+        self.problem_pool.queue.clear()
+        for input_file in input_file_list:
+            error = self._generate_input(input_file)
+            if error is not None:
+                generation_failures.append(
+                    f"case={input_file.name}, stage=sampler, error={error}"
+                )
+                continue
+            self.problem_pool.put(input_file)
+            queued_cases += 1
+
+        if queued_cases == 0:
+            return input_file_list, generation_failures
+
+        worker_count = min(self.threads, queued_cases)
+
+        with ThreadPoolExecutor(max_workers=worker_count) as executor:
+            futures = [
+                executor.submit(self._solver_worker, generation_failures)
+                for _ in range(worker_count)
+            ]
+            for future in futures:
+                future.result()
+        return input_file_list, generation_failures
+
+    def cleanup_temp_group_files(self, input_files: list[Path]) -> None:
+        for path in input_files:
+            if not path.exists():
+                continue
+            if path.parent != self.output_path:
+                continue
+            if not path.name.startswith("tmp_"):
+                continue
+            path.unlink()
+
+    def generate(self) -> bool:
+        self.input_and_output.clear()
+        self.crashed_reasons.clear()
+        crashed = False
+        while len(self.input_and_output) < self.bench_number:
+            accepted_before = len(self.input_and_output)
+            remaining = self.bench_number - accepted_before
+            group_size = min(5, remaining)
+            input_files, generation_failures = self.generate_case_group(
+                group_size=group_size,
+            )
+            if generation_failures:
+                crashed = True
+                self.crashed_reasons.extend(generation_failures)
+            self.cleanup_temp_group_files(input_files)
+
+            if len(self.input_and_output) == accepted_before:
+                break
+        return crashed
+
+    def _next_temp_input_path(self, case_index: int) -> Path:
+        self._tmp_case_seq += 1
+        return self.output_path.joinpath(
+            f"tmp_c{case_index:02d}_{self._tmp_case_seq:04d}.in"
+        )
+
+    def _generate_input(self, input_file: Path) -> str | None:
+        try:
+            self.run_sample(input_file)
+            return None
+        except Exception as exc:
+            logger.info(
+                "Generate input failed (problem=%s, file=%s): %s",
+                self.name,
+                input_file.name,
+                exc,
+            )
+            return str(exc)
+
+    def _solver_worker(self, failures: list[str]) -> None:
+        while True:
             try:
-                self.run_sample(input_file)
-                answer = self.solver.run_solver(
+                input_file = self.problem_pool.get(timeout=0.1)
+            except Empty:
+                return
+            try:
+                if input_file is None:
+                    return
+                output_text = self.solver.run_solver(
                     solver=self.solver_path,
                     language=self.language,
                     input_file=input_file,
                 )
-                output_file.write_text(answer, encoding="utf-8")
-                return input_file, output_file
-            except Exception as exc:  # noqa: PERF203 - explicit retry loop
-                last_error = exc
-                logger.warning(
-                    "Generate case failed (problem=%s, case=%s, attempt=%s/%s): %s",
-                    self.name,
-                    index,
-                    attempt,
-                    self.retry_times + 1,
-                    exc,
-                )
-        raise RuntimeError(f"Failed to generate case {index}") from last_error
-
-    def _generate_single(
-        self,
-        progress_callback: Callable[[dict[str, Any]], None] | None = None,
-    ) -> bool:
-        self.input_and_output.clear()
-        total = self.bench_number
-        self._emit_subtask_progress(
-            progress_callback,
-            status="start",
-            current=0,
-            total=total,
-        )
-        for i in range(1, total + 1):
-            try:
-                self.input_and_output.append(self._generate_case(i))
+                self._accept_passed_case(input_file, output_text)
             except Exception as exc:
-                self._emit_subtask_progress(
-                    progress_callback,
-                    status="error",
-                    current=i - 1,
-                    total=total,
-                    case_index=i,
-                    message=str(exc),
+                case_name = (
+                    input_file.name if input_file is not None else "(queue_sentinel)"
                 )
-                raise
-            self._emit_subtask_progress(
-                progress_callback,
-                status="update",
-                current=i,
-                total=total,
-                case_index=i,
+                failures.append(f"case={case_name}, stage=solver, error={exc}")
+            finally:
+                self.problem_pool.task_done()
+
+    def _accept_passed_case(self, input_file: Path, output_text: str) -> None:
+        with self._accept_lock:
+            case_id = len(self.input_and_output) + 1
+            final_input = self.output_path.joinpath(f"{case_id}.in")
+            final_output = self.output_path.joinpath(f"{case_id}.out")
+            final_input.write_text(
+                input_file.read_text(encoding="utf-8"), encoding="utf-8"
             )
-        self._emit_subtask_progress(
-            progress_callback,
-            status="done",
-            current=total,
-            total=total,
-        )
-        return True
-
-    def generate(
-        self,
-        progress_callback: Callable[[dict[str, Any]], None] | None = None,
-    ) -> bool:
-        self.input_and_output.clear()
-        if self.pool is None:
-            return self._generate_single(progress_callback=progress_callback)
-
-        total = self.bench_number
-        self._emit_subtask_progress(
-            progress_callback,
-            status="start",
-            current=0,
-            total=total,
-        )
-        results: list[tuple[Path, Path]] = []
-        completed = 0
-        futures = {
-            self.pool.submit(self._generate_case, index): index
-            for index in range(1, self.bench_number + 1)
-        }
-        try:
-            for future in as_completed(futures):
-                case_index = futures[future]
-                try:
-                    result = future.result()
-                except Exception as exc:
-                    self._emit_subtask_progress(
-                        progress_callback,
-                        status="error",
-                        current=completed,
-                        total=total,
-                        case_index=case_index,
-                        message=str(exc),
-                    )
-                    raise RuntimeError(
-                        f"Generate case failed for problem {self.name}, case={case_index}"
-                    ) from exc
-                results.append(result)
-                completed += 1
-                self._emit_subtask_progress(
-                    progress_callback,
-                    status="update",
-                    current=completed,
-                    total=total,
-                    case_index=case_index,
-                )
-        except Exception as exc:
-            raise RuntimeError(f"Generate data failed for problem {self.name}") from exc
-
-        self.input_and_output.extend(sorted(results, key=lambda pair: pair[0].name))
-        self._emit_subtask_progress(
-            progress_callback,
-            status="done",
-            current=total,
-            total=total,
-        )
-        return True
+            final_output.write_text(output_text, encoding="utf-8")
+            self.input_and_output.append((final_input, final_output))
 
     def _resolve_solver_and_language(
         self,
@@ -295,29 +290,6 @@ class Problem:
 
     def _language_from_suffix(self, suffix: str) -> str | None:
         return _SUFFIX_TO_LANGUAGE.get(suffix.lower())
-
-    def _emit_subtask_progress(
-        self,
-        callback: Callable[[dict[str, Any]], None] | None,
-        *,
-        status: str,
-        current: int,
-        total: int,
-        case_index: int | None = None,
-        message: str | None = None,
-    ) -> None:
-        if callback is None:
-            return
-        payload: dict[str, Any] = {
-            "status": status,
-            "current": current,
-            "total": total,
-        }
-        if case_index is not None:
-            payload["case_index"] = case_index
-        if message:
-            payload["message"] = message
-        callback(payload)
 
 
 _LANGUAGE_TO_SUFFIX: dict[str, str] = {

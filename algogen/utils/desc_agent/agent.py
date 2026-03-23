@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 import os
-import re
 
 from pydantic import BaseModel, Field
 
@@ -53,7 +52,9 @@ class DescAgent:
         problem_path = db_dir.joinpath(f"{problem_id}.md")
         if not problem_path.exists():
             raise FileNotFoundError(f"Problem markdown not found: {problem_path}")
-        return self.rewrite_problem_file(problem_path=problem_path, output_dir=output_dir)
+        return self.rewrite_problem_file(
+            problem_path=problem_path, output_dir=output_dir
+        )
 
     def rewrite_problem_file(
         self,
@@ -68,26 +69,22 @@ class DescAgent:
         if not parsed.input_format or not parsed.output_format:
             raise ValueError("Input/output sections are required")
 
+        # TODO Extract constraints from nature language description with LLM not regex expression
+        # TODO Extract the output format and validate it (Low-priority)
         constraints = extract_constraints(parsed.input_format)
-        default_hints = self._build_default_hints(
-            statement=parsed.statement,
-            input_schema=parsed.input_format,
-            constraints=constraints,
-        )
         rewrite_result = self._llm_rewrite(
             statement=parsed.statement,
             input_schema=parsed.input_format,
             output_schema=parsed.output_format,
             constraints=constraints,
             sample_io=parsed.samples,
-            default_hints=default_hints,
+            default_hints=parsed.hints,
         )
         rewritten_statement = normalize_statement_markdown(
             rewrite_result.rewritten_statement_md
         )
         if not rewritten_statement:
             raise RuntimeError("DescAgent LLM returned empty rewritten statement")
-        hint_list = self._deduplicate(rewrite_result.generator_hints + default_hints)
 
         sample_io = [
             SampleIO(input=sample_input, output=sample_output)
@@ -100,7 +97,7 @@ class DescAgent:
             output_schema=parsed.output_format,
             constraints=constraints,
             sample_io=sample_io,
-            generator_hints=hint_list,
+            hints=parsed.hints,
         )
 
         target_dir = output_dir.joinpath(problem_id)
@@ -136,13 +133,14 @@ class DescAgent:
         output_schema: str,
         constraints: list[str],
         sample_io: list[tuple[str, str]],
-        default_hints: list[str],
+        default_hints: str,
     ) -> _RewriteResult:
         structured_model = self.llm.with_structured_output(_RewriteResult)
         sample_text = "\n\n".join(
             f"[Sample {idx} Input]\n{sample_input}\n[Sample {idx} Output]\n{sample_output}"
             for idx, (sample_input, sample_output) in enumerate(sample_io, start=1)
         )
+        # TODO More prompt engineering for rewrite prompt, we only need rewrite the `statement` and `hints` part
         prompt = ChatPromptTemplate.from_messages(
             [
                 (
@@ -161,7 +159,7 @@ class DescAgent:
                     "Output format:\n{output_schema}\n\n"
                     "Constraints:\n{constraints}\n\n"
                     "Samples:\n{sample_text}\n\n"
-                    "Default generator hints:\n{default_hints}",
+                    "Default hints:\n{default_hints}",
                 ),
             ]
         )
@@ -173,7 +171,7 @@ class DescAgent:
                 "output_schema": output_schema,
                 "constraints": "\n".join(f"- {item}" for item in constraints),
                 "sample_text": sample_text or "(none)",
-                "default_hints": "\n".join(f"- {item}" for item in default_hints),
+                "default_hints": default_hints,
             }
         )
         if not isinstance(response, _RewriteResult):
@@ -181,37 +179,3 @@ class DescAgent:
         if not response.rewritten_statement_md.strip():
             raise RuntimeError("DescAgent LLM returned empty rewritten statement")
         return response
-
-    def _build_default_hints(
-        self,
-        statement: str,
-        input_schema: str,
-        constraints: list[str],
-    ) -> list[str]:
-        hints: list[str] = [
-            "Use cyaron to generate random but valid inputs.",
-            "Cover both small and boundary cases.",
-            "Generated input must strictly follow input schema.",
-        ]
-        if constraints:
-            hints.append("Respect all numeric ranges mentioned in constraints.")
-        if "进制" in statement or "进制" in input_schema:
-            hints.extend(
-                [
-                    "Pick base uniformly in [2, 16].",
-                    "Ensure digits are valid under the selected source base.",
-                    "Keep decimal value <= 1e9 when converting between bases.",
-                ]
-            )
-        return self._deduplicate(hints)
-
-    def _deduplicate(self, items: list[str]) -> list[str]:
-        seen: set[str] = set()
-        result: list[str] = []
-        for item in items:
-            clean_item = re.sub(r"\s+", " ", item).strip()
-            if not clean_item or clean_item in seen:
-                continue
-            seen.add(clean_item)
-            result.append(clean_item)
-        return result

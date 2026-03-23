@@ -17,7 +17,7 @@ class Solution:
         solver: Path,
         language: str,
         input_file: Path,
-        timeout_seconds: int = 10,
+        timeout_seconds: int = 1,
     ) -> str:
         if not solver.exists():
             raise FileNotFoundError(f"Solver not found: {solver}")
@@ -72,6 +72,7 @@ class Solution:
             timeout=timeout_seconds,
             check=False,
         )
+        # FIXME do not raise exception here, return error message instead
         if process.returncode != 0:
             raise RuntimeError(
                 "Python solver failed:\n"
@@ -108,7 +109,13 @@ class Solution:
         compiler_bin = self._require_binary(compiler)
         with tempfile.TemporaryDirectory() as tmpdir:
             binary_path = Path(tmpdir).joinpath("solver_bin")
-            compile_cmd = [compiler_bin, *compile_flags, str(solver), "-o", str(binary_path)]
+            compile_cmd = [
+                compiler_bin,
+                *compile_flags,
+                str(solver),
+                "-o",
+                str(binary_path),
+            ]
             compile_process = subprocess.run(
                 compile_cmd,
                 capture_output=True,

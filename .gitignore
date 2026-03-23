@@ -13,7 +13,8 @@ __pycache__/
 .env.local
 
 # Project
-
+.langgraph_api/
+.vscode/
 data/
 __pycache__
 *.egg-info/
