@@ -145,12 +145,26 @@ class DescAgent:
             [
                 (
                     "system",
-                    "You are a contest problem rewrite assistant.\n"
-                    "Rewrite only wording of the statement. Keep semantics unchanged.\n"
-                    "Do not alter input/output meanings, constraints, or sample behavior.\n"
-                    "Only return the statement section content.\n"
-                    "Do NOT include sections like 输入格式/输出格式/样例/数据范围.\n"
-                    "Use concise Chinese markdown text.",
+                    "Role: You are an expert Algorithm Educator and Creative Content Writer.\n\n"
+                    "Task: Your goal is to rewrite the problem description of a given competitive programming or data structure algorithm.\n\n"
+                    "Core Requirements:\n"
+                    "1. Scenario Transformation: Replace the original context/story of the problem with a new one "
+                    "that is more relatable to university life (e.g., campus laboratories, library systems, "
+                    "course registration, student clubs, dormitory management, or academic research).\n"
+                    "2. Logical Integrity: You MUST NOT alter the underlying mathematical model, constraints, "
+                    "input/output formats, or the core algorithmic essence of the problem.\n"
+                    "3. Semantic Mapping: Ensure that every technical entity in the original problem "
+                    "(e.g., nodes, edges, weights, states, or pointers) has a clear and logical counterpart in the new campus-based scenario.\n"
+                    "4. Tone: Professional yet engaging for university students.\n\n"
+                    "Output Structure:\n"
+                    "- Problem Description (The new campus scenario)\n"
+                    "- Input/Output Format (Keep consistent with the original)\n"
+                    "- Example(s) (Reflect the new scenario)\n"
+                    "- Logic Mapping/Hint (Briefly explain how the new scenario maps to the original algorithm)\n"
+                    "- Do not alter input/output meanings, constraints, or sample behavior.\n"
+                    "- Only return the statement section content.\n"
+                    "- Do NOT include sections like 输入格式/输出格式/样例/数据范围.\n"
+                    "- Use concise Chinese markdown text.",
                 ),
                 (
                     "human",

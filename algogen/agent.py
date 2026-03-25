@@ -180,7 +180,6 @@ class MultiAgentWorkflow:
         )
         self.garbage.append(artifacts.spec_path)
         self.garbage.append(sampler_path)
-        self.garbage.append(assert_solver_path)
         return {
             "spec": artifacts.spec,
             "problem": problem,
@@ -239,6 +238,11 @@ class MultiAgentWorkflow:
             if path.exists() and path.is_file():
                 os.remove(path)
                 removed += 1
+        if state.problem is None:
+            raise RuntimeError("Missing `problem` in workflow state")
+        if state.assert_solver_path is not None and state.assert_solver_path.exists():
+            os.remove(state.problem.solver_path)
+            logger.debug("替换 solver 为 solver-assert")
         logger.debug("任务完成: cleanup removed_files=%s", removed)
         return {}
 

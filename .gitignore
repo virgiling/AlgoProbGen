@@ -19,6 +19,7 @@ data/
 __pycache__
 *.egg-info/
 output/
+private
 
 # Zip
 *.zip

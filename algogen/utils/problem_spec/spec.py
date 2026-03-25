@@ -176,7 +176,9 @@ def extract_code_block(text: str) -> str:
 
 def parse_problem_markdown(markdown_text: str) -> ParsedProblemMarkdown:
     sections = parse_markdown_sections(markdown_text)
-    statement = sections.get("题目描述", "").strip()
+    statement = (
+        sections.get("题目描述", "").strip() or sections.get("问题描述", "").strip()
+    )
     input_format = sections.get("输入格式", "").strip()
     output_format = sections.get("输出格式", "").strip()
     hints = sections.get("提示", "").strip()
