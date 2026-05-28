@@ -39,9 +39,9 @@ algogen.json
 .env*
 !.env.example
 
-
 .agents/
 .claude/
 skills-lock.json
 
 PLAN.*
+!PLAN.html
