@@ -1,0 +1,35 @@
+{
+  "name": "algogen",
+  "version": "0.1.0",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "bin": {
+    "algogen": "./packages/cli/index.ts"
+  },
+  "scripts": {
+    "algogen": "bun packages/cli/index.ts",
+    "test": "bun test",
+    "typecheck": "bunx tsc --noEmit"
+  },
+  "workspaces": [
+    "packages/*"
+  ],
+  "devDependencies": {
+    "@types/bun": "^1.3.14",
+    "@types/node": "^25.9.1",
+    "@types/react": "^19.2.15",
+    "tsx": "^4.22.3"
+  },
+  "peerDependencies": {
+    "typescript": "^6.0.3"
+  },
+  "dependencies": {
+    "@clack/prompts": "^1.4.0",
+    "ai": "^6.0.191",
+    "clipanion": "^4.0.0-rc.4",
+    "ink": "^7.0.4",
+    "picocolors": "^1.1.1",
+    "zod": "^4.4.3"
+  }
+}

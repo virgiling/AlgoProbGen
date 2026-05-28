@@ -1,0 +1,4 @@
+env = true
+
+[install]
+registry = "https://registry.npmmirror.com/"
